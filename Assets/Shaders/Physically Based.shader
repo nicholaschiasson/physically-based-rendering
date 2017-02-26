@@ -6,36 +6,93 @@
 		_Metallic ("Metallic", Range(0,1)) = 0.0
 	}
 	SubShader {
-		Tags { "RenderType"="Opaque" }
+		Tags { "LightMode"="ForwardBase" }
 		LOD 200
-		
-		CGPROGRAM
-		// Physically based Standard lighting model, and enable shadows on all light types
-		#pragma surface surf Standard fullforwardshadows
 
-		// Use shader model 3.0 target, to get nicer looking lighting
-		#pragma target 3.0
+		Pass
+		{
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
 
-		sampler2D _MainTex;
+			#include "UnityCG.cginc"
+            #include "UnityLightingCommon.cginc"
 
-		struct Input {
-			float2 uv_MainTex;
-		};
+		    //
+		    // Fresnel Micro Facet Surface Reflectance Moel
+			//                     F(l,h)G(l,v,h)D(h)
+			// fmicrofacet(l,v) = --------------------
+			//                         4(n.l)(n.v)
+			//
+			// Schlick Fresnel Reflectance Term 
+			// F^F0(l,h) = F0+(1-F0)(1-(l.h))^5
+			//
+			// GXX Normal Distribution Term
+			//                       a
+			// D_tr(h) = ------------------------
+			//            PI((n.h)^2(a^2-1)+1)^2
+			//                             a(h.n)
+			// D_tr(h) = ------------------------------------------
+			//            PI((n.h)^2(a^2+((1-(h.n)^2)/(h.n)^2))^2)
+			//
+			// Cook-Torrance Geometry Term
+			//                        2(n.h)(n.v)    2(n.h)(n.l)
+			// G_ct(l,v,h) = min (1, -------------, -------------)
+			//                            v.h            v.h
+			//
 
-		half _Glossiness;
-		half _Metallic;
-		fixed4 _Color;
+			static const float PI = 3.14159265f;
+			sampler2D _MainTex;
+			float4 _MainTex_ST;
+			half _Glossiness;
+			half _Metallic;
+			fixed4 _Color;
 
-		void surf (Input IN, inout SurfaceOutputStandard o) {
-			// Albedo comes from a texture tinted by color
-			fixed4 c = tex2D (_MainTex, IN.uv_MainTex) * _Color;
-			o.Albedo = c.rgb;
-			// Metallic and smoothness come from slider variables
-			o.Metallic = _Metallic;
-			o.Smoothness = _Glossiness;
-			o.Alpha = c.a;
+			struct vertexOutput {
+				float2 uv     : TEXCOORD0;
+				float3 normal : NORMAL;
+				float4 vertex : SV_POSITION;
+			};
+
+			vertexOutput vert(appdata_base v) 
+			{
+				vertexOutput o;
+				o.vertex = UnityObjectToClipPos(v.vertex);
+				o.uv = v.texcoord;
+				o.normal = UnityObjectToWorldNormal(v.normal);
+				return o;
+			}
+
+			fixed4 frag(vertexOutput i) : COLOR
+			{
+				fixed4 col = tex2D(_MainTex, i.uv) * _Color;
+
+				float4 v = float4(_WorldSpaceCameraPos.xyz, 1);
+				float4 l = _WorldSpaceLightPos0;
+				float4 h = normalize(l + v);
+				float4 n = float4(i.normal, 1);
+
+				half lh = dot(l, h);
+				half nh = dot(n, h);
+				half nl = max(0, dot(n, l));
+				half nv = dot(n, v);
+				half vh = dot(v, h);
+
+				half F = _Metallic + ((1 - _Metallic) * pow(1 - lh, 5));
+				half D = _Glossiness / (PI * pow(pow(nh, 2) * (pow(_Glossiness, 2) - 1) + 1, 2));
+				half G = min(1, min((2 * nh * nv) / vh, (2 * nh * nl) / vh));
+				half facet = (F * G * D) / (4 * nl * nv);
+
+				half Fnl = _Metallic + ((1 - _Metallic) * pow(1 - nl, 5));
+				half diff = pow(1 - Fnl, _Metallic / PI);
+
+				col *= (diff + facet);
+
+				return col;
+			}
+
+			ENDCG
 		}
-		ENDCG
 	}
 	FallBack "Diffuse"
 }
