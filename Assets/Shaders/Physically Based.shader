@@ -67,14 +67,14 @@
 			{
 				fixed4 col = tex2D(_MainTex, i.uv) * _Color;
 
-				float4 v = float4(_WorldSpaceCameraPos.xyz, 1);
-				float4 l = _WorldSpaceLightPos0;
-				float4 h = normalize(l + v);
-				float4 n = float4(i.normal, 1);
+				float3 v = _WorldSpaceCameraPos;
+				float3 l = _WorldSpaceLightPos0.xyz;
+				float3 h = normalize(l + v);
+				float3 n = i.normal;
 
 				half lh = dot(l, h);
 				half nh = dot(n, h);
-				half nl = max(0, dot(n, l));
+				half nl = dot(n, l);
 				half nv = dot(n, v);
 				half vh = dot(v, h);
 
@@ -84,11 +84,9 @@
 				half facet = (F * G * D) / (4 * nl * nv);
 
 				half Fnl = _Metallic + ((1 - _Metallic) * pow(1 - nl, 5));
-				half diff = pow(1 - Fnl, _Metallic / PI);
+				half diff = pow(1 - F, _Metallic / PI);
 
-				col *= (diff + facet);
-
-				return col;
+				return (col * 0.1) + (col * _LightColor0 * nl) + (col * _LightColor0 * diff) + (_LightColor0 * facet);
 			}
 
 			ENDCG
